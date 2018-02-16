@@ -29,6 +29,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.google.common.collect.Maps;
@@ -56,6 +57,7 @@ public class KafkaQueriesTest extends KafkaTestBase {
   }
 
   @Test
+//  @Ignore
   public void testPartitionMinOffset() throws Exception {
     // following kafka.tools.GetOffsetShell for earliest as -2
     Map<TopicPartition, Long> startOffsetsMap = fetchOffsets(-2);

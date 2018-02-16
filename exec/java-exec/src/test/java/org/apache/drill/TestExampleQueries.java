@@ -37,6 +37,7 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 @Category({SqlFunctionTest.class, OperatorTest.class, PlannerTest.class})
+//@Ignore
 public class TestExampleQueries extends BaseTestQuery {
   @BeforeClass
   public static void setupTestFiles() {

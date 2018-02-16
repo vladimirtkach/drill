@@ -24,6 +24,7 @@ import org.apache.drill.common.expression.SchemaPath;
 import org.apache.drill.common.types.TypeProtos;
 import org.apache.drill.test.BaseTestQuery;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -349,6 +350,7 @@ public class TestFunctionsWithTypeExpoQueries extends BaseTestQuery {
   }
 
   @Test
+  //@Ignore
   public void testSQRTIntegerLiteral() throws Exception {
     final String query = "SELECT sqrt(4) as col " +
         "from cp.`tpch/nation.parquet` " +

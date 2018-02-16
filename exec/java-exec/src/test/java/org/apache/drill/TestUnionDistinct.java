@@ -32,6 +32,7 @@ import org.apache.drill.exec.work.foreman.UnsupportedRelOperatorException;
 import org.apache.drill.test.BaseTestQuery;
 import org.apache.drill.test.rowSet.SchemaBuilder;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -357,6 +358,7 @@ public class TestUnionDistinct extends BaseTestQuery {
   }
 
   @Test
+  //@Ignore
   public void testAggregationOnUnionDistinctOperator() throws Exception {
     String root = "/store/text/data/t.json";
 
