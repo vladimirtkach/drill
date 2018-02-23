@@ -320,7 +320,7 @@ public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
 
       @Override
       public BitToUserHandshake getHandshakeResponse(UserToBitHandshake inbound) throws Exception {
-        logger.trace("Handling handshake from user to bit. {}", inbound);
+        logger.trace("Handling handshake from user to bit. {}", inbound.getProperties());
 
         // if timeout is unsupported or is set to false, disable timeout.
         if (!inbound.hasSupportTimeout() || !inbound.getSupportTimeout()) {

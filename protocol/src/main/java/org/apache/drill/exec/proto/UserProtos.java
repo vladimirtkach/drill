@@ -20,6 +20,9 @@
 
 package org.apache.drill.exec.proto;
 
+
+import java.util.List;
+
 public final class UserProtos {
   private UserProtos() {}
   public static void registerAllExtensions(
@@ -5797,6 +5800,33 @@ public final class UserProtos {
 
     public UserToBitHandshake getDefaultInstanceForType() {
       return defaultInstance;
+    }
+    public String safeLogString() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("rpc_version: ");
+      sb.append(getRpcVersion());
+      sb.append("\ncredentials:\n  ");
+      sb.append(getCredentials());
+      sb.append("properties:");
+      List<Property> props = getProperties().getPropertiesList();
+      for(Property p: props){
+        if(!p.getKey().equalsIgnoreCase("password")) {
+          sb.append("\n  property:\n    ");
+          sb.append(p.getKey());
+          sb.append("\n    ");
+          sb.append(p.getValue());
+          sb.append("");
+        }
+      }
+      sb.append("support_complex_types: ");
+      sb.append(getSupportComplexTypes());
+      sb.append("\nsupport_timeout: ");
+      sb.append(getSupportTimeout());
+      sb.append("sasl_support: ");
+      sb.append(getSaslSupport());
+      sb.append("\nclient_infos:\n  ");
+      sb.append(getClientInfos().toString().replace("\n", "\n  "));
+      return sb.toString();
     }
 
     private final com.google.protobuf.UnknownFieldSet unknownFields;
