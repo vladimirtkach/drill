@@ -65,7 +65,10 @@ public class QueryStateProcessor implements AutoCloseable {
   public QueryState getState() {
     return state;
   }
-
+  private String getThread() {
+    String thread = Thread.currentThread().getName();
+    return thread.substring(thread.lastIndexOf('-')+8);
+  }
   /**
    * Moves one query state to another, will fail when requested query state transition is not allowed.
    *
@@ -74,7 +77,7 @@ public class QueryStateProcessor implements AutoCloseable {
    */
   public synchronized void moveToState(QueryState newState, Exception exception) {
     logger.debug(queryIdString + ": State change requested {} --> {}", state, newState);
-
+    System.out.format("MoveToState: %s -- old: %s, new:%s\n",getThread(), state, newState);
     switch (state) {
       case PREPARING:
         preparing(newState, exception);
@@ -128,6 +131,7 @@ public class QueryStateProcessor implements AutoCloseable {
       case ENQUEUED:
       case STARTING:
       case RUNNING:
+        System.out.println(String.format("Cancel: %s - CANCELLATION_REQUESTED\n", getThread()));
         moveToState(QueryState.CANCELLATION_REQUESTED, null);
         break;
 
@@ -297,6 +301,9 @@ public class QueryStateProcessor implements AutoCloseable {
          * These amount to a completion of the cancellation requests' cleanup;
          * now we can clean up and send the result.
          */
+        System.out.format("cancellationRequested: newState:: %s -- threadName:: %s\n",
+                newState.toString(),getThread());
+
         foremanResult.close();
         return;
     }

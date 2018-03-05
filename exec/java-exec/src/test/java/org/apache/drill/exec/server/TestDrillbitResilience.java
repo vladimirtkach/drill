@@ -107,6 +107,7 @@ public class TestDrillbitResilience extends DrillTest {
   private static RemoteServiceSet remoteServiceSet;
   private static final Map<String, Drillbit> drillbits = new HashMap<>();
   private static DrillClient drillClient;
+  private static int count;
 
   /**
    * The number of times test (that are repeated) should be repeated.
@@ -490,6 +491,7 @@ public class TestDrillbitResilience extends DrillTest {
 
     @Override
     public void run() {
+      System.out.println("Cancelation thread\n");
       final DrillRpcFuture<Ack> cancelAck = drillClient.cancelQuery(queryId);
       try {
         cancelAck.checkedGet();
@@ -519,8 +521,13 @@ public class TestDrillbitResilience extends DrillTest {
 
     @Override
     public void run() {
+      System.out.println("resuming thread1\n");
       latch.awaitUninterruptibly();
+      System.out.println("resuming thread2\n");
+
       final DrillRpcFuture<Ack> resumeAck = drillClient.resumeQuery(queryId);
+      System.out.println("resuming thread3\n");
+
       try {
         resumeAck.checkedGet();
       } catch (final RpcException ex) {
@@ -554,6 +561,7 @@ public class TestDrillbitResilience extends DrillTest {
 
     QueryTestUtil.testWithListener(drillClient, QueryType.SQL, query, listener);
     final Pair<QueryState, Exception> result = listener.waitForCompletion();
+    System.out.println(String.format("assertCancelledWithoutException: %d - %s )", ++count, result.getFirst()));
     assertStateCompleted(result, QueryState.CANCELED);
   }
 
@@ -619,7 +627,8 @@ public class TestDrillbitResilience extends DrillTest {
   }
 
   @Test // DRILL-2383: Cancellation TC 2: cancel in the middle of fetching result set
-  @Repeat(count = NUM_RUNS)
+  @Repeat(count = 25)
+  //@Ignore("DRILL-6228")
   public void cancelInMiddleOfFetchingResults() {
     final long before = countAllocatedMemory();
 
@@ -630,6 +639,9 @@ public class TestDrillbitResilience extends DrillTest {
       public void dataArrived(final QueryDataBatch result, final ConnectionThrottle throttle) {
         if (!cancelRequested) {
           check(queryId != null, "Query id should not be null, since we have waited long enough.");
+          String thread = Thread.currentThread().getName();
+          //thread = thread.substring(thread.lastIndexOf('-')+1);
+          System.out.format("DataArrived: %s\n", thread);
           cancelAndResume();
           cancelRequested = true;
         }
@@ -649,7 +661,8 @@ public class TestDrillbitResilience extends DrillTest {
 
 
   @Test // DRILL-2383: Cancellation TC 3: cancel after all result set are produced but not all are fetched
-  @Repeat(count = NUM_RUNS)
+  @Repeat(count = 15)
+  //@Ignore("DRILL-6228")
   public void cancelAfterAllResultsProduced() {
     final long before = countAllocatedMemory();
 
