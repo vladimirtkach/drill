@@ -71,7 +71,9 @@ fi
 if ! $is_cygwin; then
   DRILL_SHELL_OPTS="$DRILL_SHELL_OPTS --color=true"
 fi
+JAVA_DEBUG="-Xdebug -Xnoagent -Xrunjdwp:transport=dt_socket,address=50000,server=y,suspend=n"
 
+DRILL_SHELL_JAVA_OPTS="$DRILL_SHELL_JAVA_OPTS $JAVA_DEBUG"
 SHELL_OPTS="$DRILL_SHELL_JAVA_OPTS $SQLLINE_JAVA_OPTS $DRILL_SHELL_LOG_OPTS $CLIENT_GC_OPTS"
 CMD="$JAVA $SHELL_OPTS -cp $CP sqlline.SqlLine -d org.apache.drill.jdbc.Driver --maxWidth=10000"
 

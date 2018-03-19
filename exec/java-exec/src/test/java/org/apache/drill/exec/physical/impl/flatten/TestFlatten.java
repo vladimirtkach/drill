@@ -28,6 +28,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.drill.exec.ExecConstants;
+import org.apache.drill.exec.physical.impl.join.JoinTestBase;
 import org.apache.drill.test.BaseTestQuery;
 import org.apache.drill.categories.OperatorTest;
 import org.apache.drill.test.TestBuilder;
@@ -587,4 +590,108 @@ public class TestFlatten extends BaseTestQuery {
       .baselineValues("VARCHAR")
       .go();
   }
+
+  @Test
+  public void testFlattenOneEmptyArrayOneRow() throws Exception {
+      String table_name = "flatten.json";
+      String json = "{\n" +
+              "  \"x\" : 5,\n" +
+              "  \"z\" : [ ]\n" +
+              "}";
+      String query = String.format("select x, flatten(z) as z from dfs.`%s` ", table_name);
+
+      File file = new File(dirTestWatcher.getRootDir(), table_name);
+      try {
+        FileUtils.writeStringToFile(file, json);
+        test("alter session set `%s` = true", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+        testBuilder()
+                .sqlQuery(query)
+                .ordered()
+                .baselineColumns("x","z")
+                .baselineValues(5,null)
+                .build()
+                .run();
+      } finally {
+        test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+        FileUtils.deleteQuietly(file);
+      }
+  }
+
+  @Test
+  public void testFlattenOneEmptyArraysTwoRows() throws Exception {
+    String table_name = "flatten.json";
+    String json = "{\n" +
+            "  \"x\" : 7,\n" +
+            "  \"z\" : []\n" +
+            "}"+
+            "{\n" +
+            "  \"x\" : 5,\n" +
+            "  \"z\" : [1]\n" +
+            "}\n"
+            ;
+    String query = String.format("select x, flatten(z) as z from dfs.`%s` ", table_name);
+
+    File file = new File(dirTestWatcher.getRootDir(), table_name);
+    try {
+      FileUtils.writeStringToFile(file, json);
+      test("alter session set `%s` = true", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+      testBuilder()
+              .sqlQuery(query)
+              .ordered()
+              .baselineColumns("x","z")
+              .baselineValues(7,null)
+              .baselineValues(5,null)
+              .build()
+              .run();
+    } finally {
+      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+      FileUtils.deleteQuietly(file);
+    }
+  }
+
+  @Test
+  public void testFlattenTwoEmptyArraysFourRows() throws Exception {
+    String table_name = "flatten.json";
+    String json = "{\n" +
+            "  \"x\" : 5,\n" +
+            "  \"z\" : [ 1,2,3]\n" +
+            "}\n" +
+            "{\n" +
+            "  \"x\" : 6,\n" +
+            "  \"z\" : []\n" +
+            "}\n" +
+            "{\n" +
+            "  \"x\" : 7,\n" +
+            "  \"z\" : [7,9 ]\n" +
+            "}\n" +
+            "{\n" +
+            "  \"x\" : 8,\n" +
+            "  \"z\" : []\n" +
+            "}";
+    String query = String.format("select x, flatten(z) as z from dfs.`%s` ", table_name);
+
+    File file = new File(dirTestWatcher.getRootDir(), table_name);
+    try {
+      FileUtils.writeStringToFile(file, json);
+      test("alter session set `%s` = true", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+      testBuilder()
+              .sqlQuery(query)
+              .ordered()
+              .baselineColumns("x","z")
+              .baselineValues(5,1)
+              .baselineValues(5,2)
+              .baselineValues(5,3)
+              .baselineValues(6,null)
+              .baselineValues(7,7)
+              .baselineValues(7,9)
+              .baselineValues(8,null)
+              .build()
+              .run();
+    } finally {
+      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+      FileUtils.deleteQuietly(file);
+    }
+  }
+
+
 }

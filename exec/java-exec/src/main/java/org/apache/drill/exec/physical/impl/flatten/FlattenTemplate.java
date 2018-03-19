@@ -31,6 +31,7 @@ import org.apache.drill.exec.record.TransferPair;
 
 import com.google.common.collect.ImmutableList;
 
+import org.apache.drill.exec.vector.BigIntVector;
 import org.apache.drill.exec.vector.ValueVector;
 import org.apache.drill.exec.vector.complex.RepeatedValueVector;
 import org.slf4j.Logger;
@@ -91,6 +92,8 @@ public abstract class FlattenTemplate implements Flattener {
         }
 
         final int initialInnerValueIndex = currentInnerValueIndex;
+        BigIntVector flattenVector = (BigIntVector) transfers.get(0).getTo();
+        flattenVector.getMutator().setValueCount(70);
         // restore state to local stack
         int valueIndexLocal = valueIndex;
         int innerValueIndexLocal = innerValueIndex;
@@ -100,7 +103,8 @@ public abstract class FlattenTemplate implements Flattener {
           int recordsThisCall = 0;
           final int valueCount = accessor.getValueCount();
           for ( ; valueIndexLocal < valueCount; valueIndexLocal++) {
-            final int innerValueCount = accessor.getInnerValueCountAt(valueIndexLocal);
+
+            final int innerValueCount = accessor.getInnerValueCountAt(valueIndexLocal) == 0 ? 1 : accessor.getInnerValueCountAt(valueIndexLocal);
             for ( ; innerValueIndexLocal < innerValueCount; innerValueIndexLocal++) {
               // If we've hit the batch size limit, stop and flush what we've got so far.
               if (recordsThisCall == outputLimit) {
@@ -109,7 +113,9 @@ public abstract class FlattenTemplate implements Flattener {
               }
 
               try {
+                flattenVector.getMutator().setSafe(valueIndexLocal, 9);
                 doEval(valueIndexLocal, outputIndex);
+
               } catch (OversizedAllocationException ex) {
                 // unable to flatten due to a soft buffer overflow. split the batch here and resume execution.
                 logger.debug("Reached allocation limit. Splitting the batch at input index: {} - inner index: {} - current completed index: {}",
@@ -139,11 +145,12 @@ public abstract class FlattenTemplate implements Flattener {
         currentInnerValueIndex = currentInnerValueIndexLocal;
         // transfer the computed range
         final int delta = currentInnerValueIndexLocal - initialInnerValueIndex;
-        for (TransferPair t : transfers) {
+/*        for (TransferPair t : transfers) {
           t.splitAndTransfer(initialInnerValueIndex, delta);
-        }
-        return delta;
+        }      int x=0;*/
 
+
+        return delta;
       default:
         throw new UnsupportedOperationException();
     }

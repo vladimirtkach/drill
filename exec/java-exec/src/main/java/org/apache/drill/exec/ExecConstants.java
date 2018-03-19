@@ -81,7 +81,7 @@ public final class ExecConstants {
   public static final String OUTPUT_BATCH_SIZE = "drill.exec.memory.operator.output_batch_size";
   // Output Batch Size in Bytes. We have a small lower bound so we can test with unit tests without the
   // need to produce very large batches that take up lot of memory.
-  public static final LongValidator OUTPUT_BATCH_SIZE_VALIDATOR = new RangeLongValidator(OUTPUT_BATCH_SIZE, 128, 512 * 1024 * 1024);
+  public static final LongValidator OUTPUT_BATCH_SIZE_VALIDATOR = new RangeLongValidator(OUTPUT_BATCH_SIZE, 2, 512 * 1024 * 1024);
 
   // External Sort Boot configuration
 
