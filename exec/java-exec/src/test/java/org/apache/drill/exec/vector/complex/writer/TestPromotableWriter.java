@@ -60,5 +60,36 @@ public class TestPromotableWriter {
     rootWriter.setValueCount(4);
     BatchPrinter.printBatch(output.getContainer());
   }
+  @Test
+  public void nestedLists() throws Exception {
+    BufferAllocator allocator = RootAllocatorFactory.newRoot(DrillConfig.create());
+    TestOutputMutator output = new TestOutputMutator(allocator);
+    ComplexWriter rootWriter = new VectorContainerWriter(output, true);
+    MapWriter writer = rootWriter.rootAsMap();
+
+    BaseWriter.ListWriter outter  = writer.list("a");
+    outter.startList();
+    BaseWriter.ListWriter inner = outter.list();
+    IntWriter intWriter = inner.integer();
+
+    inner.startList();
+    intWriter.writeInt(1);
+    intWriter.writeInt(2);
+    inner.endList();
+
+    BaseWriter.ListWriter inner2 = outter.list();
+    IntWriter intWriter2 = inner2.integer();
+    inner2.startList();
+    intWriter2.writeInt(5);
+    intWriter2.writeInt(5);
+    intWriter2.writeInt(6);
+    inner2.endList();
+
+    outter.endList();
+
+
+    rootWriter.setValueCount(2);
+    BatchPrinter.printBatch(output.getContainer());
+  }
 
 }

@@ -28,6 +28,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.drill.exec.ExecConstants;
+import org.apache.drill.exec.physical.impl.join.JoinTestBase;
 import org.apache.drill.test.BaseTestQuery;
 import org.apache.drill.categories.OperatorTest;
 import org.apache.drill.test.TestBuilder;
@@ -36,6 +39,9 @@ import org.apache.drill.exec.fn.interp.TestConstantFolding;
 import org.apache.drill.exec.store.easy.json.JSONRecordReader;
 import org.apache.drill.exec.util.JsonStringHashMap;
 import org.apache.drill.test.SubDirTestWatcher;
+import org.apache.parquet.column.ParquetProperties;
+import org.apache.parquet.column.ParquetProperties.WriterVersion;
+import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Rule;
@@ -43,6 +49,24 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 import com.google.common.collect.Lists;
+
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.ArrayWritable;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Writable;
+import org.apache.parquet.example.data.Group;
+import org.apache.parquet.example.data.simple.NanoTime;
+import org.apache.parquet.example.data.simple.SimpleGroupFactory;
+import org.apache.parquet.hadoop.ParquetWriter;
+import org.apache.parquet.hadoop.api.WriteSupport;
+import org.apache.parquet.hadoop.example.ExampleParquetWriter;
+import org.apache.parquet.hadoop.example.GroupWriteSupport;
+import org.apache.parquet.io.api.Binary;
+import org.apache.parquet.schema.MessageType;
+import org.apache.parquet.schema.MessageTypeParser;
+import org.apache.parquet.schema.Types;
+
 
 @Category(OperatorTest.class)
 public class TestFlatten extends BaseTestQuery {
@@ -119,7 +143,7 @@ public class TestFlatten extends BaseTestQuery {
       }
     }
     builder.go();
-  };
+  }
 
   @Test
   public void testFlattenReferenceImpl() throws Exception {
@@ -213,7 +237,7 @@ public class TestFlatten extends BaseTestQuery {
       }
     }
     builder.go();
-  };
+  }
 
   @Test
   @Category(UnlikelyTest.class)
@@ -557,6 +581,7 @@ public class TestFlatten extends BaseTestQuery {
       .baselineColumns("c1")
       .baselineValues(5L)
       .baselineValues(3L)
+      .baselineValues((Object)null)
       .baselineValues(5L)
       .baselineValues(3L)
       .baselineValues(5L)
@@ -571,20 +596,903 @@ public class TestFlatten extends BaseTestQuery {
 
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(new File(dir, "empty_arrays.json")))) {
       writer.write("{\"a\" : {\"a1\" : \"a1\"}, \"b\" : [1]}\n");
-      for (int i = 0; i < JSONRecordReader.DEFAULT_ROWS_PER_BATCH; i++) {
-        writer.write("{\"a\" : {\"a1\" : \"a1\"}, \"b\" : [], \"c\" : 1}\n");
-      }
+      writer.write("{\"a\" : {\"a1\" : \"a1\"}, \"b\" : [], \"c\" : 1}\n");
       writer.write("{\"a\" : {\"a1\" : \"a1\"}, \"b\" : [1], \"c\" : 1}");
     }
 
-    String query = "select typeof(t1.a.a1) as col from " +
+    String query = "select t1.a.a1 as col1, t1.b as col2  from " +
       "(select t.*, flatten(t.b) as b from dfs.`%s/empty_arrays.json` t where t.c is not null) t1";
-
     testBuilder()
       .sqlQuery(query, path)
-      .unOrdered()
-      .baselineColumns("col")
-      .baselineValues("VARCHAR")
+      .ordered()
+      .baselineColumns("col1", "col2")
+      .baselineValues("a1", null)
+      .baselineValues("a1", 1L)
       .go();
   }
+
+  @Test
+  public void testFlattenVarchar() throws Exception {
+      String table_name = "flatten.json";
+      String json = "{" +
+              "  \"x\" : 5," +
+              "  \"z\" : [\"2017\",\"2015\" ]" +
+              "}" +
+            "{" +
+            "  \"x\" : 6," +
+            "  \"z\" : []" +
+            "}";
+      String query = String.format("select x, flatten(z) as z  from dfs.`%s` ", table_name);
+
+      File file = new File(dirTestWatcher.getRootDir(), table_name);
+      try {
+        FileUtils.writeStringToFile(file, json);
+        testBuilder()
+                .sqlQuery(query)
+                .ordered()
+                .baselineColumns("x","z")
+                .baselineValues(5L,"2017")
+                .baselineValues(5L,"2015")
+                .baselineValues(6L,null)
+                .build()
+                .run();
+      } finally {
+        FileUtils.deleteQuietly(file);
+      }
+  }
+
+  @Test
+  public void testFlattenBigInt() throws Exception {
+    String table_name = "flatten.json";
+    String json = "{" +
+            "  \"x\" : [2017, 2015]" +
+            "}" +
+            "{" +
+            "  \"x\" : []" +
+            "}";
+    String query = String.format("select flatten(x) as x  from dfs.`%s` ", table_name);
+
+    File file = new File(dirTestWatcher.getRootDir(), table_name);
+    try {
+      FileUtils.writeStringToFile(file, json);
+      testBuilder()
+              .sqlQuery(query)
+              .ordered()
+              .baselineColumns("x")
+              .baselineValues(2017L)
+              .baselineValues(2015L)
+              .baselineValues((Object) null)
+              .build()
+              .run();
+    } finally {
+      FileUtils.deleteQuietly(file);
+    }
+  }
+
+  @Test
+  public void testFlattenBit() throws Exception {
+    String table_name = "flatten.json";
+    String json = "{" +
+            "  \"x\" : [true,false ]" +
+            "}" +
+            "{" +
+            "  \"x\" : []" +
+            "}";
+    String query = String.format("select flatten(x) as x  from dfs.`%s` ", table_name);
+
+    File file = new File(dirTestWatcher.getRootDir(), table_name);
+    try {
+      FileUtils.writeStringToFile(file, json);
+      testBuilder()
+              .sqlQuery(query)
+              .ordered()
+              .baselineColumns("x")
+              .baselineValues(true)
+              .baselineValues(false)
+              .baselineValues((Object) null)
+              .build()
+              .run();
+    } finally {
+      FileUtils.deleteQuietly(file);
+    }
+  }
+
+  @Test
+  public void testFlattenMap() throws Exception {
+    String table_name = "flatten.json";
+    String json = "{" +
+            "  \"x\" : [{\"x\": \"x_val\"}, {\"y\": \"y_val\"} ]" +
+            "}" +
+            "{" +
+            "  \"x\" : []" +
+            "}";
+    String query = String.format("select flatten(x) as x  from dfs.`%s` ", table_name);
+
+    File file = new File(dirTestWatcher.getRootDir(), table_name);
+    try {
+      FileUtils.writeStringToFile(file, json);
+      testBuilder()
+              .sqlQuery(query)
+              .ordered()
+              .baselineColumns("x")
+              .baselineValues(mapOf("x", "x_val"))
+              .baselineValues(mapOf("y", "y_val"))
+              .baselineValues((Object) null)
+              .build()
+              .run();
+    } finally {
+      FileUtils.deleteQuietly(file);
+    }
+  }
+
+  @Test
+  public void testFlattenNestedList() throws Exception {
+    String table_name = "flatten.json";
+    String json = "{" +
+            "  \"x\" : 5," +
+            "  \"z\" : [[[\"2017\"]],[[\"2015\"]] ]" +
+            "}" +
+            "{" +
+            "  \"x\" : 6," +
+            "  \"z\" : []" +
+            "}";
+    String query = String.format("select flatten(z) x  from dfs.`%s` ", table_name);
+
+    File file = new File(dirTestWatcher.getRootDir(), table_name);
+    try {
+      FileUtils.writeStringToFile(file, json);
+      testBuilder()
+              .sqlQuery(query)
+              .ordered()
+              .baselineColumns("x")
+              .baselineValues(listOf(listOf("2017")))
+              .baselineValues(listOf(listOf("2015")))
+              .baselineValues((Object) null)
+              .build()
+              .run();
+    } finally {
+      FileUtils.deleteQuietly(file);
+    }
+  }
+
+
+
+
+
+
+
+//
+//  @Test
+//  public void testFlattenOneEmptyArraysTwoRows() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =
+//            "{\n" +
+//            "  \"x\" : 5,\n" +
+//            "  \"z\" : [ [[\"xx1\"],[\"xx2\"], [\"xx3\"]], [[\"zz\"]]     ]\n" +
+//            "}\n"
+//            ;
+//    String query = String.format("select x, flatten(z) as z from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//      //test("alter session set `%s` = true", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      //test("alter session set `exec.enable_union_type` = true");
+//
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("x","z")
+//              .baselineValues(7,null)
+//              .baselineValues(7,null)
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+//
+//
+//
+//
+//  @Test
+//  public void testFlattenTwoEmptyArraysFourRows() throws Exception {
+//    String table_name = "flatten.json";
+//    String json = "{\n" +
+//            "  \"x\" : 5,\n" +
+//            "  \"z\" : [[\"xx\"],[\"yy\"]]\n" +
+//            "}\n" +
+//            "{\n" +
+//            "  \"x\" : 6,\n" +
+//            "  \"z\" : []\n" +
+//            "}\n" +
+//            "{\n" +
+//            "  \"x\" : 7,\n" +
+//            "  \"z\" : [[\"zz\"]]\n" +
+//            "}";
+//
+//    String json2 = "{\n" +
+//            "  \"x\" : 5,\n" +
+//            "  \"z\" : [[2,7],[4,8]]\n" +
+//            "}\n" +
+//            "{\n" +
+//            "  \"x\" : 6,\n" +
+//            "  \"z\" : []\n" +
+//            "}\n" +
+//            "{\n" +
+//            "  \"x\" : 7,\n" +
+//            "  \"z\" : [[2,0]]\n" +
+//            "}";
+//
+//    String json1 = "{\n" +
+//            "  \"x\" : 5,\n" +
+//            "  \"z\" : [[false, true],[true]]\n" +
+//            "}\n" +
+//            "{\n" +
+//            "  \"x\" : 6,\n" +
+//            "  \"z\" : []\n" +
+//            "}\n" +
+//            "{\n" +
+//            "  \"x\" : 7,\n" +
+//            "  \"z\" : [[false]]\n" +
+//            "}";
+//    String query = String.format("select x, flatten(z) as z from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//     // test("alter session set `%s` = true", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//     //test("alter session set `exec.enable_union_type` = true");
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("x","z")
+//              .baselineValues(5,1)
+//              .baselineValues(5,3)
+//              .baselineValues(5,3)
+//              .baselineValues(8,null)
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+//
+//  @Test
+//  public void testFlattenParquetInterval() throws Exception {
+//    new File("/tmp/data/interval.parquet").delete();
+//    File file = new File(dirTestWatcher.getRootDir(), "interval.parquet");
+//    org.apache.hadoop.fs.Path outFile = new org.apache.hadoop.fs.Path(file.toURI());
+//
+//    String schemaText = "message test { "
+//            + " repeated fixed_len_byte_array(12) values_list(INTERVAL); "
+//            + "} ";
+//
+//
+//
+//    Configuration conf = new Configuration();
+//    MessageType schema = MessageTypeParser.parseMessageType(schemaText);
+//    GroupWriteSupport.setSchema(schema, conf);
+//    SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
+//    Group group1 = groupFactory.newGroup();
+//
+//    // ExampleParquetWriter is an example of ParquetWriter which can be used for creating nested (group) types
+//    ParquetWriter<Group> writer = ExampleParquetWriter
+//            .builder(outFile)
+//            .withType(schema)
+//            .withConf(conf)
+//            .build();
+//
+//
+//    writer.write(group1.append("values_list", "vfd333333333"));
+//    writer.write(groupFactory.newGroup());
+//    writer.close();
+//
+//    String query = String.format("select flatten(values_list) as z from dfs.`interval.parquet`" );
+//
+//    testBuilder()
+//            .sqlQuery(query)
+//            .ordered()
+//            .baselineColumns("z")
+//            .baselineValues(5)
+//            .baselineValues(5)
+//            .build()
+//            .run();
+//
+//  }
+//
+//  @Test
+//  public void testFlattenParquetTime() throws Exception {
+//    new File("/tmp/data/interval.parquet").delete();
+//    File file = new File(dirTestWatcher.getRootDir(), "interval.parquet");
+//    org.apache.hadoop.fs.Path outFile = new org.apache.hadoop.fs.Path(file.toURI());
+//
+//    String schemaText = "message test { "
+//            + " repeated int32 values_list(TIME_MILLIS); "
+//            + "} ";
+//
+//
+//
+//    Configuration conf = new Configuration();
+//    MessageType schema = MessageTypeParser.parseMessageType(schemaText);
+//    GroupWriteSupport.setSchema(schema, conf);
+//    SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
+//    Group group1 = groupFactory.newGroup();
+//
+//    // ExampleParquetWriter is an example of ParquetWriter which can be used for creating nested (group) types
+//    ParquetWriter<Group> writer = ExampleParquetWriter
+//            .builder(outFile)
+//            .withType(schema)
+//            .withConf(conf)
+//            .build();
+//
+//
+//    writer.write(group1.append("values_list", 65));
+//    writer.write(groupFactory.newGroup());
+//
+//    writer.close();
+//
+//    String query = String.format("select flatten(values_list) as z from dfs.`interval.parquet`" );
+//
+//    testBuilder()
+//            .sqlQuery(query)
+//            .ordered()
+//            .baselineColumns("z")
+//            .baselineValues(5)
+//            .baselineValues(5)
+//            .build()
+//            .run();
+//  }
+//
+//
+//
+//
+//  @Test
+//  public void testFlattenParquetDate() throws Exception {
+//    new File("/tmp/data/interval.parquet").delete();
+//    File file = new File(dirTestWatcher.getRootDir(), "interval.parquet");
+//    org.apache.hadoop.fs.Path outFile = new org.apache.hadoop.fs.Path(file.toURI());
+//
+//    String schemaText = "message test { "
+//            + " repeated int32 values_list(DATE); "
+//            + "} ";
+//
+//    Configuration conf = new Configuration();
+//    MessageType schema = MessageTypeParser.parseMessageType(schemaText);
+//    GroupWriteSupport.setSchema(schema, conf);
+//    SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
+//    Group group1 = groupFactory.newGroup();
+//
+//    // ExampleParquetWriter is an example of ParquetWriter which can be used for creating nested (group) types
+//    ParquetWriter<Group> writer = ExampleParquetWriter
+//            .builder(outFile)
+//            .withType(schema)
+//            .withConf(conf)
+//            .build();
+//
+//    writer.write(group1.append("values_list", (int) (System.currentTimeMillis() / (24L*60*60*1000) )));
+//    writer.write(groupFactory.newGroup());
+//
+//    writer.close();
+//
+//    String query = String.format("select flatten(values_list) as z from dfs.`interval.parquet`" );
+//
+//    testBuilder()
+//            .sqlQuery(query)
+//            .ordered()
+//            .baselineColumns("z")
+//            .baselineValues(5)
+//            .baselineValues(5)
+//            .build()
+//            .run();
+//  }
+//
+//
+//  @Test
+//  public void testFlattenParquetTimestamp() throws Exception {
+//    new File("/tmp/data/interval.parquet").delete();
+//    File file = new File(dirTestWatcher.getRootDir(), "interval.parquet");
+//    org.apache.hadoop.fs.Path outFile = new org.apache.hadoop.fs.Path(file.toURI());
+//
+//    String schemaText = "message test { "
+//            + " repeated int64 values_list(TIMESTAMP_MILLIS); "
+//            + "} ";
+//
+//    Configuration conf = new Configuration();
+//    MessageType schema = MessageTypeParser.parseMessageType(schemaText);
+//    GroupWriteSupport.setSchema(schema, conf);
+//    SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
+//    Group group1 = groupFactory.newGroup();
+//
+//    // ExampleParquetWriter is an example of ParquetWriter which can be used for creating nested (group) types
+//    ParquetWriter<Group> writer = ExampleParquetWriter
+//            .builder(outFile)
+//            .withType(schema)
+//            .withConf(conf)
+//            .build();
+//
+//    writer.write(group1.append("values_list",  System.currentTimeMillis()) );
+//    writer.write(groupFactory.newGroup());
+//
+//    writer.close();
+//
+//    String query = String.format("select flatten(values_list) as z from dfs.`interval.parquet`" );
+//
+//    testBuilder()
+//            .sqlQuery(query)
+//            .ordered()
+//            .baselineColumns("z")
+//            .baselineValues(5)
+//            .baselineValues(5)
+//            .build()
+//            .run();
+//  }
+//
+//  @Test
+//  public void testFlattenParquetInt() throws Exception {
+//    new File("/tmp/data/interval.parquet").delete();
+//    File file = new File(dirTestWatcher.getRootDir(), "interval.parquet");
+//    org.apache.hadoop.fs.Path outFile = new org.apache.hadoop.fs.Path(file.toURI());
+//
+//    String schemaText = "message test { "
+//            + " repeated int32 values_list(UINT_32); "
+//            + "} ";
+//
+//    Configuration conf = new Configuration();
+//    MessageType schema = MessageTypeParser.parseMessageType(schemaText);
+//    GroupWriteSupport.setSchema(schema, conf);
+//    SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
+//    Group group1 = groupFactory.newGroup();
+//
+//    // ExampleParquetWriter is an example of ParquetWriter which can be used for creating nested (group) types
+//    ParquetWriter<Group> writer = ExampleParquetWriter
+//            .builder(outFile)
+//            .withType(schema)
+//            .withConf(conf)
+//            .build();
+//
+//    writer.write(group1.append("values_list",  33) );
+//    writer.write(groupFactory.newGroup());
+//
+//    writer.close();
+//
+//    String query = String.format("select flatten(values_list) as z from dfs.`interval.parquet`" );
+//
+//    testBuilder()
+//            .sqlQuery(query)
+//            .ordered()
+//            .baselineColumns("z")
+//            .baselineValues(5)
+//            .baselineValues(5)
+//            .build()
+//            .run();
+//  }
+//
+//  @Test
+//  public void testFlattenParquetFloat4() throws Exception {
+//    new File("/tmp/data/interval.parquet").delete();
+//    org.apache.hadoop.fs.Path file = new org.apache.hadoop.fs.Path(String.valueOf(dirTestWatcher.getRootDir()), "interval.parquet");
+//    org.apache.hadoop.fs.Path outFile = new org.apache.hadoop.fs.Path(file.toUri());
+//
+//    String schemaText = "message test { "
+//            + " repeated float values_list; "
+//            + "} ";
+//
+//    Configuration conf = new Configuration();
+//    MessageType schema = MessageTypeParser.parseMessageType(schemaText);
+//    GroupWriteSupport.setSchema(schema, conf);
+//    SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
+//    Group group1 = groupFactory.newGroup();
+//
+//    // ExampleParquetWriter is an example of ParquetWriter which can be used for creating nested (group) types
+//    ParquetWriter<Group> writer = new ParquetWriter<Group>(
+//            file,
+//            new GroupWriteSupport(),
+//            CompressionCodecName.UNCOMPRESSED, 1024, 1024, 512, true, false, WriterVersion.PARQUET_1_0, conf);
+//
+//    writer.write(group1.append("values_list", 44.2f));
+//    writer.write(groupFactory.newGroup());
+//
+//    writer.close();
+//
+//    String query = String.format("select flatten(values_list) as z from dfs.`interval.parquet`" );
+//
+//    testBuilder()
+//            .sqlQuery(query)
+//            .ordered()
+//            .baselineColumns("z")
+//            .baselineValues(5)
+//            .baselineValues(5)
+//            .build()
+//            .run();
+//  }
+//
+//  @Test
+//  public void testFlattenParquetFloat8() throws Exception {
+//    new File("/tmp/data/interval.parquet").delete();
+//    org.apache.hadoop.fs.Path file = new org.apache.hadoop.fs.Path(String.valueOf(dirTestWatcher.getRootDir()), "interval.parquet");
+//    org.apache.hadoop.fs.Path outFile = new org.apache.hadoop.fs.Path(file.toUri());
+//
+//    String schemaText = "message test { "
+//            + " repeated double values_list; "
+//            + "} ";
+//
+//    Configuration conf = new Configuration();
+//    MessageType schema = MessageTypeParser.parseMessageType(schemaText);
+//    GroupWriteSupport.setSchema(schema, conf);
+//    SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
+//    Group group1 = groupFactory.newGroup();
+//
+//    // ExampleParquetWriter is an example of ParquetWriter which can be used for creating nested (group) types
+//    ParquetWriter<Group> writer = new ParquetWriter<Group>(
+//            file,
+//            new GroupWriteSupport(),
+//            CompressionCodecName.UNCOMPRESSED, 1024, 1024, 512, true, false, WriterVersion.PARQUET_1_0, conf);
+//
+//    writer.write(group1.append("values_list", 48.2d));
+//    writer.write(groupFactory.newGroup());
+//
+//    writer.close();
+//
+//    String query = String.format("select flatten(values_list) as z from dfs.`interval.parquet`" );
+//
+//    testBuilder()
+//            .sqlQuery(query)
+//            .ordered()
+//            .baselineColumns("z")
+//            .baselineValues(5)
+//            .baselineValues(5)
+//            .build()
+//            .run();
+//  }
+//
+//  @Test
+//  public void testFlattenOne() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =
+//            "{\"col1\" : 5,\n" +
+//             "\"col2\" : []\n" +
+//             "}\n" +
+//
+//            "{\"col1\" : 6,\n" +
+//            "\"col2\" : [ [\"x1\"],[\"x2\"] ]  \n" +
+//            "}\n"
+//            ;
+//    String query = String.format("select col1, flatten(col2) as col2 from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("col1","col2")
+//              .baselineValues(5l,null)
+//              .baselineValues(6l,listOf("x1"))
+//              .baselineValues(6l,listOf("x2"))
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+//
+//  @Test
+//  public void testFlatten2() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =
+//            "{\"col1\" : 5,\n" +
+//                    "\"col2\" : []\n" +
+//                    "}\n" +
+//
+//                    "{\"col1\" : 6,\n" +
+//                    "\"col2\" : [[7]]  \n" +
+//                    "}\n"
+//            ;
+//    String query = String.format("select col1, flatten(flatten(col2)) as col2 from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("col1","col2")
+//              .baselineValues(5l,null)
+//              .baselineValues(6l,listOf("x1"))
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+//
+//  @Test
+//  public void testFlatten3Nested() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =
+//
+//            "{\"col1\" : 6,\n" +
+//                    "\"col2\" : []  \n" +
+//                    "}\n" +
+//            "{\"col1\" : 5,\n" +
+//                    "\"col2\" : [[[\"x1\"]]]\n" +
+//                    "}\n"
+//
+//
+//            ;
+//    String query = String.format("select col1, flatten(col2) as col2 from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("col1","col2")
+//              .baselineValues(6l,null)
+//              .baselineValues(5l,listOf(listOf("x1")))
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+//
+//  @Test
+//  public void testFlatten4Nested() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =
+//
+//            "{\"col1\" : 6,\n" +
+//                    "\"col2\" : []  \n" +
+//                    "}\n" +
+//                    "{\"col1\" : 5,\n" +
+//                    "\"col2\" : [[[[\"x1\"]]]]\n" +
+//                    "}\n"
+//
+//
+//            ;
+//    String query = String.format("select col1, flatten(col2) as col2 from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("col1","col2")
+//              .baselineValues(6l,null)
+//              .baselineValues(5l,listOf(listOf(listOf("x1"))))
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+//
+//  @Test
+//  public void testFlatten3Nested2Values() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =
+//
+//            "{\"col1\" : 6,\n" +
+//                    "\"col2\" : []  \n" +
+//                    "}\n" +
+//                    "{\"col1\" : 5,\n" +
+//                    "\"col2\" : [[[\"x1\"]], [[\"x2\"]]]\n" +
+//                    "}\n"
+//            ;
+//    String query = String.format("select col1, flatten(col2) as col2 from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("col1","col2")
+//              .baselineValues(6l,null)
+//              .baselineValues(5l,listOf(listOf("x1")))
+//              .baselineValues(5l,listOf(listOf("x2")))
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+//
+//  @Test
+//  public void testFlatten3Nested3Values() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =
+//
+//            "{\"col1\" : 6,\n" +
+//                    "\"col2\" : []  \n" +
+//                    "}\n" +
+//                    "{\"col1\" : 5,\n" +
+//                    "\"col2\" : [[[\"x1\",\"x2\"]],[[\"x1\",\"x2\"]],[[\"x1\",\"x2\"]]]\n" +
+//                    "}\n"+
+//                    "{\"col1\" : 6,\n" +
+//                    "\"col2\" : []  \n" +
+//                    "}\n"
+//            ;
+//
+//
+//    String query = String.format("select col1, flatten(col2) as col2 from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("col1","col2")
+//              .baselineValues(6l,null)
+//              .baselineValues(6l,null)
+//              .baselineValues(6l,null)
+//              .baselineValues(5l,listOf(listOf("x1")))
+//              .baselineValues(5l,listOf(listOf("x2")))
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+//
+//  @Test
+//  public void testFlatten4Nested3Values() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =
+//
+//            "{\"col1\" : 6,\n" +
+//                    "\"col2\" : []  \n" +
+//                    "}\n" +
+//                    "{\"col1\" : 5,\n" +
+//                    "\"col2\" : [[[[\"x1\",\"x2\"]],[[\"x1\",\"x2\"]],[[\"x1\",\"x2\"]]]]\n" +
+//                    "}\n"+
+//                    "{\"col1\" : 6,\n" +
+//                    "\"col2\" : []  \n" +
+//                    "}\n"
+//
+//
+//            ;
+//    String query = String.format("select col1, flatten(col2) as col2 from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("col1","col2")
+//              .baselineValues(6l,null)
+//              .baselineValues(5l,listOf(listOf("x2")))
+//              .baselineValues(6l,null)
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+//
+//  @Test
+//  public void testFlatten4Nested4Values() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =
+//
+//            "{\"col1\" : 6,\n" +
+//                    "\"col2\" : []  \n" +
+//                    "}\n" +
+//                    "{\"col1\" : 5,\n" +
+//                    "\"col2\" : [[[[53,4]],[[333,34]],[[35434,333]]],        [[[43,4]],[[353,34]],[[334,333]]]]\n" +
+//                    "}\n"+
+//                    "{\"col1\" : 6,\n" +
+//                    "\"col2\" : []  \n" +
+//                    "}\n"
+//
+//            ;
+//    String query = String.format("select col1, flatten(col2) as col2 from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("col1","col2")
+//              .baselineValues(6l, null)
+//              .baselineValues(5l, listOf(listOf("x2")))
+//              .baselineValues(5l, listOf(listOf("x2")))
+//              .baselineValues(6l, null)
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+//
+//  @Test
+//  public void testFlattenMaps() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =  "{\"col1\" : 6,\n" +
+//                    "\"col2\" : [{\"a\":1}]  \n" +
+//                      "}\n" +
+//                    "{\"col1\" : 5,\n" +
+//                    "\"col2\" : [{\"a\":2},{\"b\":2}]" +
+//            "}\n";
+//    String query = String.format("select col1, flatten(col2) as col2 from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//    FileUtils.writeStringToFile(file, json);
+//
+//    testBuilder()
+//            .sqlQuery(query)
+//            .ordered()
+//            .baselineColumns("col1","col2")
+//            .baselineValues(6l,null)
+//            .baselineValues(6l,null)
+//            .baselineValues(5l,listOf(listOf("x2")))
+//            .build()
+//            .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+
+
+//    @Test
+//  public void testFlatten3Nested2Values() throws Exception {
+//    String table_name = "flatten.json";
+//    String json =
+//
+//            "{\"col1\" : 6,\n" +
+//                    "\"col2\" : []  \n" +
+//                    "}\n" +
+//                    "{\"col1\" : 5,\n" +
+//                    "\"col2\" : [[[\"x1\"]], [[\"x2\"]]]\n" +
+//                    "}\n"
+//            ;
+//    String query = String.format("select col1, flatten(flatten(col2)) as col2 from dfs.`%s` ", table_name);
+//
+//    File file = new File(dirTestWatcher.getRootDir(), table_name);
+//    try {
+//      FileUtils.writeStringToFile(file, json);
+//
+//      testBuilder()
+//              .sqlQuery(query)
+//              .ordered()
+//              .baselineColumns("col1","col2")
+//              .baselineValues(6l,null)
+//              .baselineValues(5l,listOf(("x1")))
+//              .baselineValues(5l,listOf(("x2")))
+//              .build()
+//              .run();
+//    } finally {
+//      test("alter session set `%s` = false", ExecConstants.JSON_READ_NUMBERS_AS_DOUBLE);
+//      FileUtils.deleteQuietly(file);
+//    }
+//  }
+
+
 }
