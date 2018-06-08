@@ -21,14 +21,15 @@ import java.io.Writer;
 import java.util.List;
 
 import org.codehaus.janino.Java;
-import org.codehaus.janino.UnparseVisitor;
+import org.codehaus.janino.Unparser;
+import org.codehaus.janino.Visitor;
 import org.codehaus.janino.util.AutoIndentWriter;
 
 /**
  * This is a modified version of {@link UnparseVisitor} so that we can avoid
  * rendering few things. Based on janino version 2.7.4.
  */
-public class ModifiedUnparseVisitor extends UnparseVisitor {
+public class ModifiedUnparseVisitor extends Unparser implements Visitor.FunctionDeclaratorVisitor{
 
   private String returnLabel;
 
@@ -39,14 +40,14 @@ public class ModifiedUnparseVisitor extends UnparseVisitor {
    * and unparses them to {@link System#out}.
    */
   public static void main(String[] args) throws Exception {
-    UnparseVisitor.main(args);
+    Unparser.main(args);
   }
 
   /**
    * Unparse the given {@link Java.CompilationUnit} to the given {@link Writer}.
    */
   public static void unparse(Java.CompilationUnit cu, Writer w) {
-    UnparseVisitor.unparse(cu, w);
+    Unparser.unparse(cu, w);
   }
 
   public ModifiedUnparseVisitor(Writer w) {
@@ -54,7 +55,11 @@ public class ModifiedUnparseVisitor extends UnparseVisitor {
   }
 
   @Override
-  public void visitMethodDeclarator(Java.MethodDeclarator md) {
+  public Object visitConstructorDeclarator(Java.ConstructorDeclarator cd) throws Throwable {
+    return null;
+  }
+
+  public Object visitMethodDeclarator(Java.MethodDeclarator md) {
     if (md.optionalStatements == null) {
       this.pw.print(';');
     } else
@@ -72,9 +77,10 @@ public class ModifiedUnparseVisitor extends UnparseVisitor {
         this.pw.println("}");
         this.pw.print(' ');
       }
+    return null;
   }
 
-  @Override
+
   public void visitReturnStatement(Java.ReturnStatement rs) {
     this.pw.print("break " + returnLabel);
     if (rs.optionalReturnValue != null) {
@@ -110,11 +116,15 @@ public class ModifiedUnparseVisitor extends UnparseVisitor {
     }
   }
 
-  private void unparseBlockStatement(Java.BlockStatement blockStatement) {
-    blockStatement.accept(this);
-  }
+//  private void unparseBlockStatement(Java.BlockStatement blockStatement) {
+//    blockStatement.accept(this);
+//  }
 
   private void unparse(Java.Atom operand) {
-    operand.accept(this);
+    try {
+      operand.accept((Visitor.AtomVisitor<? extends Object, ? extends Throwable>) this);
+    } catch (Throwable throwable) {
+      throwable.printStackTrace();
+    }
   }
 }

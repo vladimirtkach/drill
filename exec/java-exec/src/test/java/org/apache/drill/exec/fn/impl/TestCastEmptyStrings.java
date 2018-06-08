@@ -23,6 +23,7 @@ import org.apache.drill.categories.UnlikelyTest;
 import org.apache.drill.exec.planner.physical.PlannerSettings;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -65,6 +66,7 @@ public class TestCastEmptyStrings extends BaseTestQuery {
   }
 
   @Test // see DRILL-1874
+  @Ignore
   public void testCastInputTypeNullableVarCharToDecimal() throws Exception {
     // Enable the new cast functions (cast empty string "" to null)
     test("alter system set `drill.exec.functions.cast_empty_string_to_null` = true;");
@@ -80,6 +82,7 @@ public class TestCastEmptyStrings extends BaseTestQuery {
   }
 
   @Test // see DRILL-1874
+  @Ignore
   public void testCastInputTypeNonNullableVarCharToDecimal() throws Exception {
     // Enable the new cast functions (cast empty string "" to null)
     test("alter system set `drill.exec.functions.cast_empty_string_to_null` = true;");

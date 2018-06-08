@@ -21,8 +21,8 @@ import java.io.StringWriter;
 import java.util.Map;
 
 import org.codehaus.janino.Java;
-import org.codehaus.janino.Java.ClassDeclaration;
 import org.codehaus.janino.Java.MethodDeclarator;
+import org.codehaus.janino.Visitor;
 import org.codehaus.janino.util.Traverser;
 
 import com.google.common.collect.Maps;
@@ -33,7 +33,7 @@ public class MethodGrabbingVisitor{
 
   private Class<?> c;
   private Map<String, String> methods = Maps.newHashMap();
-  private ClassFinder classFinder = new ClassFinder();
+  private ClassFinder<Object, Throwable> classFinder = new ClassFinder<>();
   private boolean captureMethods = false;
 
   private MethodGrabbingVisitor(Class<?> c) {
@@ -41,14 +41,18 @@ public class MethodGrabbingVisitor{
     this.c = c;
   }
 
-  public class ClassFinder extends Traverser{
+  public class ClassFinder<R, EX extends Throwable> extends Traverser implements Visitor.TypeDeclarationVisitor<R, EX> {
 
     @Override
-    public void traverseClassDeclaration(ClassDeclaration cd) {
+    public void traverseClassDeclaration(Java.AbstractClassDeclaration cd) {
 //      logger.debug("Traversing: {}", cd.getClassName());
       boolean prevCapture = captureMethods;
       captureMethods = c.getName().equals(cd.getClassName());
-      super.traverseClassDeclaration(cd);
+      try {
+        super.traverseClassDeclaration((Java.AbstractClassDeclaration)cd);
+      } catch (Throwable throwable) {
+        throwable.printStackTrace();
+      }
       captureMethods = prevCapture;
     }
 
@@ -59,7 +63,7 @@ public class MethodGrabbingVisitor{
       if(captureMethods){
         StringWriter writer = new StringWriter();
         ModifiedUnparseVisitor v = new ModifiedUnparseVisitor(writer);
-//        UnparseVisitor v = new UnparseVisitor(writer);
+//      UnparseVisitor v = new UnparseVisitor(writer);
 
         md.accept(v);
         v.close();
@@ -67,12 +71,117 @@ public class MethodGrabbingVisitor{
         methods.put(md.name, writer.getBuffer().toString());
       }
     }
+
+    @Override
+    public R visitAnonymousClassDeclaration(Java.AnonymousClassDeclaration acd) throws EX {
+      try {
+        traverseClassDeclaration(acd);
+      } catch (Throwable throwable) {
+        throwable.printStackTrace();
+      }
+      return null;
+    }
+
+    @Override
+    public R visitLocalClassDeclaration(Java.LocalClassDeclaration lcd) throws EX {
+      try {
+        traverseClassDeclaration(lcd);
+      } catch (Throwable throwable) {
+        throwable.printStackTrace();
+      }
+      return null;
+    }
+
+    @Override
+    public R visitPackageMemberClassDeclaration(Java.AbstractPackageMemberClassDeclaration apmcd) throws EX {
+      try {
+        traverseClassDeclaration(apmcd);
+      } catch (Throwable throwable) {
+        throwable.printStackTrace();
+      }
+      return null;
+    }
+
+    @Override
+    public R visitMemberInterfaceDeclaration(Java.MemberInterfaceDeclaration mid) throws EX {
+//      try {
+//        traverseClassDeclaration((ClassDeclaration) mid);
+//      } catch (Throwable throwable) {
+//        throwable.printStackTrace();
+//      }
+      return null;
+    }
+
+    @Override
+    public R visitPackageMemberInterfaceDeclaration(Java.PackageMemberInterfaceDeclaration pmid) throws EX {
+//      try {
+//        traverseClassDeclaration((ClassDeclaration) pmid);
+//      } catch (Throwable throwable) {
+//        throwable.printStackTrace();
+//      }
+      return null;
+    }
+
+    @Override
+    public R visitMemberClassDeclaration(Java.MemberClassDeclaration mcd) throws EX {
+      try {
+        traverseClassDeclaration(mcd);
+      } catch (Throwable throwable) {
+        throwable.printStackTrace();
+      }
+      return null;
+    }
+
+    @Override
+    public R visitEnumConstant(Java.EnumConstant ec) throws EX {
+      try {
+        traverseClassDeclaration(ec);
+      } catch (Throwable throwable) {
+        throwable.printStackTrace();
+      }
+      return null;
+    }
+
+    @Override
+    public R visitMemberEnumDeclaration(Java.MemberEnumDeclaration med) throws EX {
+      try {
+        traverseClassDeclaration(med);
+      } catch (Throwable throwable) {
+        throwable.printStackTrace();
+      }
+      return null;
+    }
+
+    @Override
+    public R visitPackageMemberEnumDeclaration(Java.PackageMemberEnumDeclaration pmed) throws EX {
+      try {
+        traverseClassDeclaration(pmed);
+      } catch (Throwable throwable) {
+        throwable.printStackTrace();
+      }
+      return null;
+    }
+
+    @Override
+    public R visitMemberAnnotationTypeDeclaration(Java.MemberAnnotationTypeDeclaration matd) throws EX {
+
+      return null;
+    }
+
+    @Override
+    public R visitPackageMemberAnnotationTypeDeclaration(Java.PackageMemberAnnotationTypeDeclaration pmatd) throws EX {
+      return null;
+    }
   }
 
 
   public static Map<String, String> getMethods(Java.CompilationUnit cu, Class<?> c){
     MethodGrabbingVisitor visitor = new MethodGrabbingVisitor(c);
-    cu.getPackageMemberTypeDeclarations()[0].accept(visitor.classFinder.comprehensiveVisitor());
+    try {
+      cu.getPackageMemberTypeDeclarations()[0].accept(visitor.classFinder);
+    } catch (Throwable throwable) {
+      throwable.printStackTrace();
+    }
     return visitor.methods;
   }
 

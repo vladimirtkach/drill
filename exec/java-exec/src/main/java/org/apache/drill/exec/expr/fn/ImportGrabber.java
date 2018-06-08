@@ -24,6 +24,7 @@ import org.codehaus.janino.Java.CompilationUnit.SingleStaticImportDeclaration;
 import org.codehaus.janino.Java.CompilationUnit.SingleTypeImportDeclaration;
 import org.codehaus.janino.Java.CompilationUnit.StaticImportOnDemandDeclaration;
 import org.codehaus.janino.Java.CompilationUnit.TypeImportOnDemandDeclaration;
+import org.codehaus.janino.Visitor;
 import org.codehaus.janino.util.Traverser;
 
 import com.google.common.collect.Lists;
@@ -37,7 +38,7 @@ public class ImportGrabber {
   private ImportGrabber() {
   }
 
-  public class ImportFinder extends Traverser {
+  public class ImportFinder extends Traverser implements Visitor.ImportVisitor{
 
     @Override
     public void traverseSingleTypeImportDeclaration(SingleTypeImportDeclaration stid) {
@@ -60,6 +61,29 @@ public class ImportGrabber {
     }
 
 
+    @Override
+    public Object visitSingleTypeImportDeclaration(SingleTypeImportDeclaration stid) throws Throwable {
+      traverseSingleTypeImportDeclaration(stid);
+      return null;
+    }
+
+    @Override
+    public Object visitTypeImportOnDemandDeclaration(TypeImportOnDemandDeclaration tiodd) throws Throwable {
+      traverseTypeImportOnDemandDeclaration(tiodd);
+      return null;
+    }
+
+    @Override
+    public Object visitSingleStaticImportDeclaration(SingleStaticImportDeclaration ssid) throws Throwable {
+      traverseSingleStaticImportDeclaration(ssid);
+      return null;
+    }
+
+    @Override
+    public Object visitStaticImportOnDemandDeclaration(StaticImportOnDemandDeclaration siodd) throws Throwable {
+      traverseStaticImportOnDemandDeclaration(siodd);
+      return null;
+    }
   }
 
   /**
@@ -74,7 +98,7 @@ public class ImportGrabber {
     final ImportGrabber visitor = new ImportGrabber();
 
     for (Java.CompilationUnit.ImportDeclaration importDeclaration : compilationUnit.importDeclarations) {
-      importDeclaration.accept(visitor.finder.comprehensiveVisitor());
+      importDeclaration.accept(visitor.finder);
     }
 
     return visitor.imports;

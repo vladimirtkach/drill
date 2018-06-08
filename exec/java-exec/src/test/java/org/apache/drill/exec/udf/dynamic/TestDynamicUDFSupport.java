@@ -42,6 +42,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -544,6 +545,7 @@ public class TestDynamicUDFSupport extends BaseTestQuery {
   }
 
   @Test
+  @Ignore
   public void testDropFunction() throws Exception {
     copyDefaultJarsToStagingArea();
     test("create function using jar '%s'", defaultBinaryJar);

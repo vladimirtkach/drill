@@ -39,6 +39,7 @@ import org.apache.drill.test.ClusterFixture;
 import org.apache.drill.test.ClusterFixtureBuilder;
 import org.apache.zookeeper.CreateMode;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -60,6 +61,7 @@ public class TestPStoreProviders extends TestWithZookeeper {
   }
 
   @Test
+  @Ignore
   public void verifyZkStore() throws Exception {
     try(CuratorFramework curator = createCurator()){
       curator.start();
